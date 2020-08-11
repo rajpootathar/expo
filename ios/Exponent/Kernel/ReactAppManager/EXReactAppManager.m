@@ -185,6 +185,13 @@ typedef void (^SDK21RCTSourceLoadBlock)(NSError *error, NSData *source, int64_t 
   return [EXVersions versionedString:string withPrefix:_versionSymbolPrefix];
 }
 
+- (NSString *)escapedResourceName:(NSString *)string
+{
+  NSString *charactersToEscape = @"!*'();:@&=+$,/?%#[]";
+  NSCharacterSet *allowedCharacters = [[NSCharacterSet characterSetWithCharactersInString:charactersToEscape] invertedSet];
+  return [string stringByAddingPercentEncodingWithAllowedCharacters:allowedCharacters];
+}
+
 - (BOOL)isReadyToLoad
 {
   if (_appRecord) {
@@ -267,7 +274,7 @@ typedef void (^SDK21RCTSourceLoadBlock)(NSError *error, NSData *source, int64_t 
   BOOL isStandardDevMenuAllowed = [EXEnvironment sharedEnvironment].isDetached;
   _exceptionHandler = [[EXReactAppExceptionHandler alloc] initWithAppRecord:_appRecord];
 
-  NSDictionary *params = @{
+  NSMutableDictionary *params = [NSMutableDictionary dictionaryWithDictionary:@{
                            @"bridge": bridge,
                            @"manifest": _appRecord.appLoader.manifest,
                            @"constants": @{
@@ -287,7 +294,15 @@ typedef void (^SDK21RCTSourceLoadBlock)(NSError *error, NSData *source, int64_t 
                            @"services": [EXKernel sharedInstance].serviceRegistry.allServices,
                            @"singletonModules": [UMModuleRegistryProvider singletonModules],
                            @"moduleRegistryDelegateClass": RCTNullIfNil([self moduleRegistryDelegateClass]),
-                           };
+                           }];
+  if ([@"expo" isEqualToString:[self _appOwnership]]) {
+    [params addEntriesFromDictionary:@{
+      @"fileSystemDirectories": @{
+          @"documentDirectory": [self scopedDocumentDirectory],
+          @"cachesDirectory": [self scopedCachesDirectory]
+      }
+    }];
+  }
   return [self.versionManager extraModulesWithParams:params];
 }
 
@@ -606,6 +621,22 @@ typedef void (^SDK21RCTSourceLoadBlock)(NSError *error, NSData *source, int64_t 
     return @"standalone";
   }
   return @"expo";
+}
+
+- (NSString *)scopedDocumentDirectory
+{
+  NSString *escapedExperienceId = [self escapedResourceName:_appRecord.experienceId];
+  NSString *mainDocumentDirectory = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+  NSString *exponentDocumentDirectory = [mainDocumentDirectory stringByAppendingPathComponent:@"ExponentExperienceData"];
+  return [[exponentDocumentDirectory stringByAppendingPathComponent:escapedExperienceId] stringByStandardizingPath];
+}
+
+- (NSString *)scopedCachesDirectory
+{
+  NSString *escapedExperienceId = [self escapedResourceName:_appRecord.experienceId];
+  NSString *mainCachesDirectory = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject;
+  NSString *exponentCachesDirectory = [mainCachesDirectory stringByAppendingPathComponent:@"ExponentExperienceData"];
+  return [[exponentCachesDirectory stringByAppendingPathComponent:escapedExperienceId] stringByStandardizingPath];
 }
 
 @end
